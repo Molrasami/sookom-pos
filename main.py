@@ -5,6 +5,7 @@ import sqlite3
 from fastapi.middleware.cors import CORSMiddleware
 
 
+
 # ==========================================
 # 1. คลาสจัดการฐานข้อมูล SOOKOM
 # ==========================================
