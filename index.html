@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สั่งอาหาร - SOOKOM</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f7f9fc; margin: 0; padding: 20px; }
+        .app-container { max-width: 400px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; }
+        h1 { text-align: center; color: #ff6b6b; margin-top: 0; }
+        .table-input { width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        .menu-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+        .menu-info h3 { margin: 0 0 5px 0; font-size: 16px; color: #333; }
+        .menu-info p { margin: 0; color: #888; font-size: 14px; }
+        .add-btn { background: #ff6b6b; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        .cart { margin-top: 30px; background: #fff8f8; padding: 15px; border-radius: 8px; border: 1px solid #ffe3e3; }
+        .cart-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .submit-btn { width: 100%; background: #4ecdc4; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h1>SOOKOM</h1>
+
+    <input type="number" id="tableNumber" class="table-input" placeholder="ระบุหมายเลขโต๊ะของคุณ" required>
+
+    <h2>เมนูอาหาร</h2>
+    <div id="menuList">
+        <p style="text-align:center; color:#888;">กำลังโหลดเมนู...</p>
+    </div>
+
+    <div class="cart">
+        <h3>ตะกร้าของคุณ</h3>
+        <div id="cartItems">
+            <p style="color:#888; font-size: 14px;">ยังไม่มีรายการอาหาร</p>
+        </div>
+        <button class="submit-btn" onclick="submitOrder()">ยืนยันการสั่งอาหาร</button>
+    </div>
+</div>
+
+<script>
+    // URL ของ API ที่เรารันไว้ (ใช้ IP ของเครื่อง Mac และ Port 8000)
+    const API_URL = "http://192.168.1.118:8000/api";
+    let cart = {};
+
+    // 1. ฟังก์ชันดึงเมนูอาหารจาก API
+    async function loadMenu() {
+        try {
+            const response = await fetch(`${API_URL}/menu`);
+            const result = await response.json();
+            const menuList = document.getElementById('menuList');
+            menuList.innerHTML = '';
+
+            result.data.forEach(item => {
+                const menuItemHTML = `
+                    <div class="menu-item">
+                        <div class="menu-info">
+                            <h3>${item.name}</h3>
+                            <p>${item.price} ฿</p>
+                        </div>
+                        <button class="add-btn" onclick="addToCart('${item.item_id}', '${item.name}')">+ เพิ่ม</button>
+                    </div>
+                `;
+                menuList.innerHTML += menuItemHTML;
+            });
+        } catch (error) {
+            document.getElementById('menuList').innerHTML = '<p style="color:red; text-align:center;">ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้</p>';
+        }
+    }
+
+    // 2. ฟังก์ชันเพิ่มลงตะกร้า
+    function addToCart(itemId, itemName) {
+        if (cart[itemId]) {
+            cart[itemId].quantity += 1;
+        } else {
+            cart[itemId] = { name: itemName, quantity: 1 };
+        }
+        updateCartUI();
+    }
+
+    // 3. ฟังก์ชันอัปเดตหน้าจอส่วนตะกร้า
+    function updateCartUI() {
+        const cartItemsDiv = document.getElementById('cartItems');
+        cartItemsDiv.innerHTML = '';
+
+        const itemIds = Object.keys(cart);
+        if (itemIds.length === 0) {
+            cartItemsDiv.innerHTML = '<p style="color:#888; font-size: 14px;">ยังไม่มีรายการอาหาร</p>';
+            return;
+        }
+
+        itemIds.forEach(id => {
+            const item = cart[id];
+            cartItemsDiv.innerHTML += `
+                <div class="cart-item">
+                    <span>${item.name}</span>
+                    <span>x ${item.quantity}</span>
+                </div>
+            `;
+        });
+    }
+
+    // 4. ฟังก์ชันกดยืนยันออเดอร์
+    async function submitOrder() {
+        const tableInput = document.getElementById('tableNumber').value;
+        if (!tableInput) {
+            alert('กรุณาระบุหมายเลขโต๊ะก่อนสั่งอาหารครับ!');
+            return;
+        }
+
+        const itemIds = Object.keys(cart);
+        if (itemIds.length === 0) {
+            alert('กรุณาเลือกอาหารลงตะกร้าก่อนครับ!');
+            return;
+        }
+
+        const orderData = {
+            table_number: parseInt(tableInput),
+            items: itemIds.map(id => ({
+                item_id: id,
+                quantity: cart[id].quantity
+            }))
+        };
+
+        try {
+            const response = await fetch(`${API_URL}/orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
+
+            const result = await response.json();
+            if (result.status === "success") {
+                alert(`สั่งอาหารสำเร็จ! รหัสออเดอร์ของคุณคือ #${result.order_id}`);
+                cart = {};
+                updateCartUI();
+            }
+        } catch (error) {
+            alert('เกิดข้อผิดพลาดในการส่งออเดอร์');
+        }
+    }
+
+    // 5. ฟังก์ชันสำหรับดึง Query Parameter จาก URL (เช่น ?table=5)
+    function getTableFromUrl() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('table');
+    }
+
+    // 6. เริ่มทำงานทันทีที่โหลดหน้าเว็บเสร็จ
+    window.onload = () => {
+        loadMenu();
+
+        const tableParam = getTableFromUrl();
+        if (tableParam) {
+            const tableInput = document.getElementById('tableNumber');
+            tableInput.value = tableParam;
+            tableInput.disabled = true;
+            tableInput.placeholder = `ล็อกโต๊ะ ${tableParam} แล้ว`;
+            tableInput.style.backgroundColor = "#f0f0f0";
+        }
+    };
+</script>
+
+</body>
+</html>
