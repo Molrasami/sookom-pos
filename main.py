@@ -71,6 +71,22 @@ class POSDatabase:
 # 2. สร้างแอป FastAPI และอนุญาต CORS
 # ==========================================
 app = FastAPI(title="SOOKOM POS API")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# --- ส่วนสำคัญที่ต้องเพิ่ม ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # อนุญาตทุกเว็บ (ทั้ง GitHub และ Localhost)
+    allow_credentials=True,
+    allow_methods=["*"],  # อนุญาตทุกคำสั่ง
+    allow_headers=["*"],  # อนุญาตทุก Header
+)
+# -------------------------
+
+# ... (โค้ดส่วนอื่นๆ ของคุณอยู่เหมือนเดิม)
 
 app.add_middleware(
     CORSMiddleware,
