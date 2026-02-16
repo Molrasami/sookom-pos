@@ -76,7 +76,11 @@
 
         async function fetchOrders() {
             try {
-                const response = await fetch(`${API_URL}/kitchen/orders`);
+                const response = await fetch(`${API_URL}/kitchen/orders`, {
+    headers: {
+        "ngrok-skip-browser-warning": "true"  // <--- ใส่บัตรผ่านตรงนี้ครับ
+    }
+});
                 const result = await response.json();
                 const orders = result.data;
 
