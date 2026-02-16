@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import sqlite3
+from datetime import datetime
 
 
 # ==========================================
@@ -82,8 +83,6 @@ app.add_middleware(
 )
 
 db = POSDatabase()
-
-# 🔥 ตัวแปรเก็บรายชื่อโต๊ะที่ถูกล็อก (เก็บในแรม)
 LOCKED_TABLES = set()
 
 
@@ -129,7 +128,7 @@ init_mock_data()
 
 
 # ==========================================
-# 4. Endpoints
+# 4. Endpoints ปกติ
 # ==========================================
 class OrderItem(BaseModel):
     item_id: str
@@ -153,7 +152,6 @@ def get_menu():
 
 @app.post("/api/orders")
 def place_order(order: OrderRequest):
-    # 🔥 เช็คก่อนว่าโต๊ะล็อกอยู่ไหม
     if order.table_number in LOCKED_TABLES:
         return {"status": "error", "message": "โต๊ะนี้ถูกปิดรับออเดอร์แล้ว กรุณาติดต่อพนักงาน"}
 
@@ -181,7 +179,7 @@ def get_bill(table_number: int):
         cursor.execute("SELECT order_id FROM orders WHERE table_number = ? AND status != 'Paid'", (table_number,))
         orders = cursor.fetchall()
 
-        is_locked = table_number in LOCKED_TABLES  # เช็คสถานะล็อกส่งไปด้วย
+        is_locked = table_number in LOCKED_TABLES
 
         if not orders:
             return {"status": "empty", "message": "ไม่พบรายการ", "total": 0, "items": [], "is_locked": is_locked}
@@ -220,12 +218,10 @@ def get_bill(table_number: int):
 @app.post("/api/bill/{table_number}/pay")
 def pay_bill(table_number: int):
     db.execute_query("UPDATE orders SET status = 'Paid' WHERE table_number = ? AND status != 'Paid'", (table_number,))
-    # 🔥 จ่ายเงินเสร็จ ล็อกโต๊ะทันทีอัตโนมัติ!
     LOCKED_TABLES.add(table_number)
-    return {"status": "success", "message": f"โต๊ะ {table_number} ชำระเงินแล้ว (ล็อกโต๊ะอัตโนมัติ)"}
+    return {"status": "success", "message": f"โต๊ะ {table_number} ชำระเงินแล้ว"}
 
 
-# 🔥 API สำหรับเปิด/ปิดโต๊ะ (ใช้โดยแคชเชียร์)
 @app.post("/api/tables/{table_number}/lock")
 def lock_table(table_number: int):
     LOCKED_TABLES.add(table_number)
@@ -237,3 +233,45 @@ def unlock_table(table_number: int):
     if table_number in LOCKED_TABLES:
         LOCKED_TABLES.remove(table_number)
     return {"status": "success", "message": f"เปิดโต๊ะ {table_number} แล้ว"}
+
+
+# ==========================================
+# 5. (NEW!) รายงานยอดขายรายวัน
+# ==========================================
+@app.get("/api/report/daily")
+def get_daily_report():
+    today = datetime.now().strftime('%Y-%m-%d')
+    with sqlite3.connect(db.db_name) as conn:
+        cursor = conn.cursor()
+
+        # ดึงออเดอร์ทั้งหมดที่จ่ายเงินแล้ว (Paid) ของวันนี้
+        # หมายเหตุ: SQLite เก็บวันที่แบบ Text ต้องใช้ strftime ตัดเวลาทิ้งเพื่อเทียบแค่วัน
+        query = '''
+            SELECT o.order_id 
+            FROM orders o 
+            WHERE o.status = 'Paid' 
+            AND date(o.timestamp) = date('now', 'localtime')
+        '''
+        cursor.execute(query)
+        paid_orders = cursor.fetchall()
+
+        total_revenue = 0
+        total_bills = len(paid_orders)
+
+        # คำนวณยอดรวม
+        for (order_id,) in paid_orders:
+            cursor.execute('''
+                SELECT SUM(m.price * oi.quantity)
+                FROM order_items oi
+                JOIN menu_items m ON oi.item_id = m.item_id
+                WHERE oi.order_id = ?
+            ''', (order_id,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                total_revenue += result[0]
+
+    return {
+        "date": today,
+        "total_revenue": total_revenue,
+        "total_bills": total_bills
+    }
