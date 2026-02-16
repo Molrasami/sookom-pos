@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>รายการที่สั่ง - SOOKOM</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f7f9fc; margin: 0; padding: 20px; }
+        .container { max-width: 400px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; min-height: 80vh; position: relative; }
+        h1 { text-align: center; color: #333; margin-bottom: 5px; }
+        .table-badge { background: #ff6b6b; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; display: inline-block; margin-bottom: 20px; }
+        .center { text-align: center; }
+
+        .bill-list { margin-top: 10px; }
+        .bill-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #eee; }
+        .item-name { color: #555; font-weight: 500; }
+        .item-price { color: #888; }
+
+        .total-section { margin-top: 30px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .total-row { display: flex; justify-content: space-between; font-size: 20px; font-weight: bold; color: #2c3e50; }
+
+        .back-btn { display: block; width: 100%; text-align: center; padding: 12px; margin-top: 20px; background: #eee; color: #555; text-decoration: none; border-radius: 8px; }
+        .refresh-btn { background: #4ecdc4; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="center">
+        <h1>รายการอาหารที่สั่ง</h1>
+        <div id="tableDisplay" class="table-badge">กำลังโหลด...</div>
+        <br>
+        <button class="refresh-btn" onclick="loadBill()">🔄 อัปเดตล่าสุด</button>
+    </div>
+
+    <div id="billContent">
+        <div class="bill-list" id="itemList">
+            </div>
+
+        <div class="total-section">
+            <div class="total-row">
+                <span>ยอดรวมทั้งสิ้น</span>
+                <span id="totalPrice">0 ฿</span>
+            </div>
+        </div>
+    </div>
+
+    <a href="index.html" class="back-btn">⬅️ กลับไปหน้าสั่งอาหาร</a>
+</div>
+
+<script>
+    // แก้ลิงก์ให้ตรงกับของปัจจุบัน (Ngrok)
+    const API_URL = "https://saboted-nonintellectually-anja.ngrok-free.dev/api";
+
+    // ดึงเลขโต๊ะจาก URL (เช่น check.html?table=5)
+    const urlParams = new URLSearchParams(window.location.search);
+    let tableNumber = urlParams.get('table');
+
+    // ถ้าไม่มีเลขโต๊ะใน URL ให้ถาม
+    if (!tableNumber) {
+        tableNumber = prompt("กรุณาระบุหมายเลขโต๊ะที่จะดูบิล:");
+        if (tableNumber) {
+            // รีโหลดหน้าเว็บพร้อมเลขโต๊ะ
+            window.location.search = `?table=${tableNumber}`;
+        }
+    }
+
+    document.getElementById('tableDisplay').innerText = `โต๊ะ ${tableNumber}`;
+
+    async function loadBill() {
+        if (!tableNumber) return;
+
+        try {
+            document.getElementById('itemList').innerHTML = '<p style="text-align:center">กำลังดึงข้อมูล...</p>';
+
+            const response = await fetch(`${API_URL}/bill/${tableNumber}`, {
+                headers: { "ngrok-skip-browser-warning": "true" }
+            });
+            const result = await response.json();
+
+            const listDiv = document.getElementById('itemList');
+            listDiv.innerHTML = '';
+
+            if (result.status === 'empty' || result.items.length === 0) {
+                listDiv.innerHTML = '<p style="text-align:center; color:#999;">ยังไม่มีรายการที่สั่ง</p>';
+                document.getElementById('totalPrice').innerText = "0 ฿";
+                return;
+            }
+
+            result.items.forEach(item => {
+                const html = `
+                    <div class="bill-item">
+                        <div class="item-name">${item.name} <span style="font-size:12px; color:#aaa;">x${item.quantity}</span></div>
+                        <div class="item-price">${item.subtotal}.-</div>
+                    </div>
+                `;
+                listDiv.innerHTML += html;
+            });
+
+            document.getElementById('totalPrice').innerText = `${result.total} ฿`;
+
+        } catch (error) {
+            alert("ไม่สามารถดึงข้อมูลบิลได้");
+        }
+    }
+
+    // โหลดข้อมูลทันทีที่เปิดหน้า
+    loadBill();
+</script>
+
+</body>
+</html>
