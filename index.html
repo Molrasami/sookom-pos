@@ -47,7 +47,11 @@
     // 1. ฟังก์ชันดึงเมนูอาหารจาก API
     async function loadMenu() {
         try {
-            const response = await fetch(`${API_URL}/menu`);
+            const response = await fetch(`${API_URL}/menu`, {
+    headers: {
+        "ngrok-skip-browser-warning": "true"
+    }
+});
             const result = await response.json();
             const menuList = document.getElementById('menuList');
             result.data.forEach(item => {
@@ -122,12 +126,15 @@
         };
 
         try {
-            const response = await fetch(`${API_URL}/orders`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            });
-
+            // แก้ตรงนี้นะครับ (ประมาณบรรทัด 125)
+const response = await fetch(`${API_URL}/orders`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true' // <--- ใส่บัตรผ่านตรงนี้ด้วย
+    },
+    body: JSON.stringify(orderData)
+});
             const result = await response.json();
             if (result.status === "success") {
                 alert(`สั่งอาหารสำเร็จ! รหัสออเดอร์ของคุณคือ #${result.order_id}`);
