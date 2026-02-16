@@ -16,6 +16,7 @@
         .cart { margin-top: 30px; background: #fff8f8; padding: 15px; border-radius: 8px; border: 1px solid #ffe3e3; }
         .cart-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
         .submit-btn { width: 100%; background: #4ecdc4; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        .bill-btn { width: 100%; background: #34495e; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -36,24 +37,27 @@
             <p style="color:#888; font-size: 14px;">ยังไม่มีรายการอาหาร</p>
         </div>
         <button class="submit-btn" onclick="submitOrder()">ยืนยันการสั่งอาหาร</button>
+
+        <button class="bill-btn" onclick="goToBill()">🧾 ดูรายการที่สั่งไปแล้ว</button>
     </div>
 </div>
 
 <script>
-    // URL ของ API ที่เรารันไว้ (ใช้ IP ของเครื่อง Mac และ Port 8000)
+    // URL ของ API
     const API_URL = "https://saboted-nonintellectually-anja.ngrok-free.dev/api";
     let cart = {};
 
-    // 1. ฟังก์ชันดึงเมนูอาหารจาก API
+    // 1. ฟังก์ชันดึงเมนูอาหาร
     async function loadMenu() {
         try {
             const response = await fetch(`${API_URL}/menu`, {
-    headers: {
-        "ngrok-skip-browser-warning": "true"
-    }
-});
+                headers: { "ngrok-skip-browser-warning": "true" }
+            });
             const result = await response.json();
+
             const menuList = document.getElementById('menuList');
+            menuList.innerHTML = ''; // เคลียร์ข้อความเก่าก่อน
+
             result.data.forEach(item => {
                 const menuItemHTML = `
                     <div class="menu-item">
@@ -126,15 +130,15 @@
         };
 
         try {
-            // แก้ตรงนี้นะครับ (ประมาณบรรทัด 125)
-const response = await fetch(`${API_URL}/orders`, {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true' // <--- ใส่บัตรผ่านตรงนี้ด้วย
-    },
-    body: JSON.stringify(orderData)
-});
+            const response = await fetch(`${API_URL}/orders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify(orderData)
+            });
+
             const result = await response.json();
             if (result.status === "success") {
                 alert(`สั่งอาหารสำเร็จ! รหัสออเดอร์ของคุณคือ #${result.order_id}`);
@@ -146,13 +150,23 @@ const response = await fetch(`${API_URL}/orders`, {
         }
     }
 
-    // 5. ฟังก์ชันสำหรับดึง Query Parameter จาก URL (เช่น ?table=5)
+    // 5. ฟังก์ชันไปหน้าดูบิล (Check Bill)
+    function goToBill() {
+        const table = document.getElementById('tableNumber').value;
+        if (!table) {
+            alert("กรุณาใส่เลขโต๊ะก่อนครับ");
+            return;
+        }
+        window.location.href = `check.html?table=${table}`;
+    }
+
+    // 6. ฟังก์ชันสำหรับดึง Query Parameter
     function getTableFromUrl() {
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('table');
     }
 
-    // 6. เริ่มทำงานทันทีที่โหลดหน้าเว็บเสร็จ
+    // 7. เริ่มทำงานทันทีที่โหลดหน้าเว็บเสร็จ
     window.onload = () => {
         loadMenu();
 
