@@ -50,8 +50,6 @@
             const response = await fetch(`${API_URL}/menu`);
             const result = await response.json();
             const menuList = document.getElementById('menuList');
-            menuList.innerHTML = '';
-
             result.data.forEach(item => {
                 const menuItemHTML = `
                     <div class="menu-item">
