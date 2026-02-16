@@ -39,7 +39,6 @@ class POSDatabase:
             (order_id, item_id, quantity)
         )
 
-    # --- ส่วนที่เพิ่มใหม่สำหรับห้องครัว ---
     def get_pending_orders(self):
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
@@ -70,7 +69,7 @@ class POSDatabase:
 
 
 # ==========================================
-# 2. สร้างแอป FastAPI และอนุญาต CORS
+# 2. สร้างแอป FastAPI และตัวแปรล็อกโต๊ะ
 # ==========================================
 app = FastAPI(title="SOOKOM POS API")
 
@@ -84,9 +83,12 @@ app.add_middleware(
 
 db = POSDatabase()
 
+# 🔥 ตัวแปรเก็บรายชื่อโต๊ะที่ถูกล็อก (เก็บในแรม)
+LOCKED_TABLES = set()
+
 
 # ==========================================
-# 3. ฟังก์ชันเตรียมข้อมูลเริ่มต้น (เมนู)
+# 3. เตรียมข้อมูล
 # ==========================================
 def init_mock_data():
     db.execute_query('''
@@ -113,24 +115,21 @@ def init_mock_data():
             quantity INTEGER
         )
     ''')
-
     try:
-        items = db.get_all_menu()
-        if len(items) == 0:
+        if len(db.get_all_menu()) == 0:
             db.execute_query("INSERT INTO menu_items VALUES ('F01', 'ข้าวกะเพราหมูสับไข่ดาว', 70, 'อาหารตามสั่ง')")
             db.execute_query("INSERT INTO menu_items VALUES ('F02', 'ข้าวผัดหมูกรอบ', 80, 'อาหารตามสั่ง')")
             db.execute_query("INSERT INTO menu_items VALUES ('D01', 'อเมริกาโน่เย็น', 55, 'เครื่องดื่ม')")
             db.execute_query("INSERT INTO menu_items VALUES ('D02', 'ชาไทยเย็น', 50, 'เครื่องดื่ม')")
-            print("✅ เตรียมฐานข้อมูล SOOKOM สำเร็จ!")
-    except Exception as e:
-        print(f"⚠️ เกิดข้อผิดพลาดในการโหลดเมนู: {e}")
+    except:
+        pass
 
 
 init_mock_data()
 
 
 # ==========================================
-# 4. โมเดลรับข้อมูล (Pydantic)
+# 4. Endpoints
 # ==========================================
 class OrderItem(BaseModel):
     item_id: str
@@ -142,12 +141,9 @@ class OrderRequest(BaseModel):
     items: List[OrderItem]
 
 
-# ==========================================
-# 5. Endpoints (ลูกค้า & ทั่วไป)
-# ==========================================
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to SOOKOM POS API. ระบบทำงานปกติ!"}
+    return {"message": "SOOKOM POS Ready"}
 
 
 @app.get("/api/menu")
@@ -157,13 +153,16 @@ def get_menu():
 
 @app.post("/api/orders")
 def place_order(order: OrderRequest):
+    # 🔥 เช็คก่อนว่าโต๊ะล็อกอยู่ไหม
+    if order.table_number in LOCKED_TABLES:
+        return {"status": "error", "message": "โต๊ะนี้ถูกปิดรับออเดอร์แล้ว กรุณาติดต่อพนักงาน"}
+
     order_id = db.create_order(order.table_number)
     for item in order.items:
         db.add_item_to_order(order_id, item.item_id, item.quantity)
     return {"status": "success", "message": "รับออเดอร์สำเร็จ", "order_id": order_id}
 
 
-# --- Endpoints สำหรับห้องครัว ---
 @app.get("/api/kitchen/orders")
 def get_kitchen_orders():
     return {"status": "success", "data": db.get_pending_orders()}
@@ -172,29 +171,24 @@ def get_kitchen_orders():
 @app.put("/api/kitchen/orders/{order_id}/complete")
 def complete_order(order_id: int):
     db.update_order_status(order_id, 'Completed')
-    return {"status": "success", "message": f"ออเดอร์ #{order_id} ทำเสร็จแล้ว"}
+    return {"status": "success", "message": "Done"}
 
-
-# ==========================================
-# 6. Endpoints สำหรับดูบิล & จ่ายเงิน (รวม Customer & Cashier)
-# ==========================================
 
 @app.get("/api/bill/{table_number}")
 def get_bill(table_number: int):
     with sqlite3.connect(db.db_name) as conn:
         cursor = conn.cursor()
-        # หา Order ID ที่ยังไม่จ่าย (Status != Paid) ของโต๊ะนี้
         cursor.execute("SELECT order_id FROM orders WHERE table_number = ? AND status != 'Paid'", (table_number,))
         orders = cursor.fetchall()
 
-        # กรณีไม่มีรายการค้าง
+        is_locked = table_number in LOCKED_TABLES  # เช็คสถานะล็อกส่งไปด้วย
+
         if not orders:
-            return {"status": "empty", "message": "ยังไม่มีรายการอาหาร", "total": 0, "items": []}
+            return {"status": "empty", "message": "ไม่พบรายการ", "total": 0, "items": [], "is_locked": is_locked}
 
         total_price = 0
         items_summary = []
 
-        # วนลูปเก็บรายการอาหารทั้งหมด
         for (order_id,) in orders:
             cursor.execute('''
                 SELECT m.name, m.price, oi.quantity 
@@ -207,29 +201,39 @@ def get_bill(table_number: int):
             for name, price, qty in items:
                 subtotal = price * qty
                 total_price += subtotal
-
-                # เช็คว่าเมนูนี้มีในรายการหรือยัง (รวมยอดเมนูซ้ำให้ดูง่ายๆ)
                 existing = next((x for x in items_summary if x['name'] == name), None)
                 if existing:
                     existing['quantity'] += qty
                     existing['subtotal'] += subtotal
                 else:
-                    items_summary.append({
-                        "name": name,
-                        "price": price,
-                        "quantity": qty,
-                        "subtotal": subtotal
-                    })
+                    items_summary.append({"name": name, "price": price, "quantity": qty, "subtotal": subtotal})
 
     return {
         "status": "success",
         "table_number": table_number,
         "items": items_summary,
-        "total": total_price
+        "total": total_price,
+        "is_locked": is_locked
     }
 
 
 @app.post("/api/bill/{table_number}/pay")
 def pay_bill(table_number: int):
     db.execute_query("UPDATE orders SET status = 'Paid' WHERE table_number = ? AND status != 'Paid'", (table_number,))
-    return {"status": "success", "message": f"โต๊ะ {table_number} ชำระเงินเรียบร้อยแล้ว"}
+    # 🔥 จ่ายเงินเสร็จ ล็อกโต๊ะทันทีอัตโนมัติ!
+    LOCKED_TABLES.add(table_number)
+    return {"status": "success", "message": f"โต๊ะ {table_number} ชำระเงินแล้ว (ล็อกโต๊ะอัตโนมัติ)"}
+
+
+# 🔥 API สำหรับเปิด/ปิดโต๊ะ (ใช้โดยแคชเชียร์)
+@app.post("/api/tables/{table_number}/lock")
+def lock_table(table_number: int):
+    LOCKED_TABLES.add(table_number)
+    return {"status": "success", "message": f"ล็อกโต๊ะ {table_number} แล้ว"}
+
+
+@app.post("/api/tables/{table_number}/unlock")
+def unlock_table(table_number: int):
+    if table_number in LOCKED_TABLES:
+        LOCKED_TABLES.remove(table_number)
+    return {"status": "success", "message": f"เปิดโต๊ะ {table_number} แล้ว"}
